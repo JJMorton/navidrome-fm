@@ -76,7 +76,7 @@ def command_get_scrobbles(args: argparse.Namespace, log: Log) -> int:
     return 0
 
 
-def command_update_counts(args: argparse.Namespace, log: Log) -> int:
+def command_match(args: argparse.Namespace, log: Log) -> int:
     with sqlite3.Connection(Path(f"scrobbles_{args.user}.db")) as con_scrobbles:
         with sqlite3.Connection(Path(args.database)) as con_navidrome:
             m = NavidromeScrobbleMatcher(con_scrobbles, con_navidrome, log)
@@ -103,10 +103,14 @@ def main_cli() -> int:
     parser.add_argument("-u", "--user", required=True, help="last.fm username")
     subparsers = parser.add_subparsers()
 
-    parser_info = subparsers.add_parser("info")
+    parser_info = subparsers.add_parser(
+        "info", help="show statistics of saved scrobbles"
+    )
     parser_info.set_defaults(func=command_info)
 
-    parser_get = subparsers.add_parser("get-scrobbles")
+    parser_get = subparsers.add_parser(
+        "get-scrobbles", help="fetch and save scrobbles from last.fm"
+    )
     parser_get.set_defaults(func=command_get_scrobbles)
     parser_get.add_argument(
         "-p", "--page", type=int, default=1, help="start from this page of results"
@@ -119,12 +123,14 @@ def main_cli() -> int:
         help="don't stop fetching scrobbles when encountering one which exists",
     )
 
-    parser_update = subparsers.add_parser("update-counts")
-    parser_update.set_defaults(func=command_update_counts)
-    parser_update.add_argument(
+    parser_match = subparsers.add_parser(
+        "match-scrobbles", help="match scrobbles with tracks in Navidrome"
+    )
+    parser_match.set_defaults(func=command_match)
+    parser_match.add_argument(
         "--database", type=str, required=True, help="path to the Navidrome database"
     )
-    parser_update.add_argument(
+    parser_match.add_argument(
         "--resolve",
         action="store_true",
         default=False,
