@@ -97,6 +97,10 @@ def command_match(args: argparse.Namespace, log: Log) -> int:
     return 0
 
 
+def command_counts(args: argparse.Namespace, log: Log) -> int:
+    raise NotImplementedError()
+
+
 def main_cli() -> int:
 
     parser = argparse.ArgumentParser()
@@ -136,6 +140,11 @@ def main_cli() -> int:
         default=False,
         help="manually resolve uncertain matches",
     )
+
+    parser_counts = subparsers.add_parser(
+        "update-counts", help="update Navidrome play counts with last.fm scrobbles"
+    )
+    parser_counts.set_defaults(func=command_counts)
 
     args = parser.parse_args()
 
