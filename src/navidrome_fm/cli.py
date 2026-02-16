@@ -1,0 +1,138 @@
+import argparse
+import sqlite3
+from os import environ
+from pathlib import Path
+from sys import argv
+
+from dotenv import load_dotenv
+
+from . import api
+from .db import NavidromeScrobbleMatcher, MatchStatus, ScrobbleDB
+from .log import ConsoleLog, Log
+
+
+def get_api_key(log: Log) -> str | None:
+    # Get API key from .env file
+    load_dotenv()
+    try:
+        return environ["LASTFM_API_KEY"]
+    except IndexError:
+        log.bad(argv[0], "LASTFM_API_KEY environment variable not defined")
+        return None
+
+
+def command_info(args: argparse.Namespace, log: Log) -> int:
+    api_key = get_api_key(log)
+    if api_key is None:
+        return 1
+
+    with sqlite3.Connection(Path(f"scrobbles_{args.user}.db")) as con:
+        db = ScrobbleDB(con, log)
+        user_info = api.get_info(api_key, user=args.user, log=log)
+        scrobble_count = db.count_scrobbles()
+        track_count = db.count_tracks()
+        match_count = db.count_matched()
+        print(f"{'User':15s}\t{user_info.name}")
+        print(
+            f"{'Scrobbles':15s}\t{scrobble_count} (local) / {user_info.playcount} (last.fm)"
+        )
+        print(
+            f"{'Tracks':15s}\t{track_count} (local) / {user_info.track_count} (last.fm)"
+        )
+        print(
+            f"{'Matched':15s}\t{match_count} / {track_count} tracks ({100.0 * match_count / track_count:.0f}%)"
+        )
+
+    return 0
+
+
+def command_get_scrobbles(args: argparse.Namespace, log: Log) -> int:
+    api_key = get_api_key(log)
+    if api_key is None:
+        return 1
+
+    with sqlite3.Connection(Path(f"scrobbles_{args.user}.db")) as con:
+        db = ScrobbleDB(con, log)
+        try:
+            for s in api.get_recenttracks(
+                api_key, user=args.user, log=log, page_start=args.page
+            ):
+                if not db.add_scrobble_from_api(s) and not args.greedy:
+                    log.good(
+                        argv[0],
+                        "Reached previously saved scrobble, finishing. Use --greedy to continue anyway",
+                    )
+                    return 0
+                print(
+                    f"{s.date.as_datetime().isoformat()} {s.artist.name} / {s.album.name} -- {s.name}"
+                )
+
+            log.good(argv[0], "Finished iterating all pages")
+
+        except api.LastFMAPIError as err:
+            log.bad(err, str(err))
+            return 1
+
+    return 0
+
+
+def command_update_counts(args: argparse.Namespace, log: Log) -> int:
+    with sqlite3.Connection(Path(f"scrobbles_{args.user}.db")) as con_scrobbles:
+        with sqlite3.Connection(Path(args.database)) as con_navidrome:
+            m = NavidromeScrobbleMatcher(con_scrobbles, con_navidrome, log)
+            track_count = 0
+            for track in m.iter_unmatched():
+                track_count += 1
+                status, match = m.find_navidrome_id_for(track, interactive=args.resolve)
+                if status == MatchStatus.MATCH:
+                    log.good(argv[0], f"Found match for {track}")
+                if status != MatchStatus.CHOICE_REQUIRED:
+                    m.save_match(track, match)
+
+    log.good(argv[0], f"Processed {track_count} unmatched tracks")
+
+    # for track in db.iter_tracks():
+    #     pc = db.play_count(track.id)
+
+    return 0
+
+
+def main_cli() -> int:
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-u", "--user", required=True, help="last.fm username")
+    subparsers = parser.add_subparsers()
+
+    parser_info = subparsers.add_parser("info")
+    parser_info.set_defaults(func=command_info)
+
+    parser_get = subparsers.add_parser("get-scrobbles")
+    parser_get.set_defaults(func=command_get_scrobbles)
+    parser_get.add_argument(
+        "-p", "--page", type=int, default=1, help="start from this page of results"
+    )
+    parser_get.add_argument(
+        "-g",
+        "--greedy",
+        action="store_true",
+        default=False,
+        help="don't stop fetching scrobbles when encountering one which exists",
+    )
+
+    parser_update = subparsers.add_parser("update-counts")
+    parser_update.set_defaults(func=command_update_counts)
+    parser_update.add_argument(
+        "--database", type=str, required=True, help="path to the Navidrome database"
+    )
+    parser_update.add_argument(
+        "--resolve",
+        action="store_true",
+        default=False,
+        help="manually resolve uncertain matches",
+    )
+
+    args = parser.parse_args()
+
+    log = ConsoleLog()
+
+    return args.func(args, log)

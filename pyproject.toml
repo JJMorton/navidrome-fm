@@ -1,0 +1,17 @@
+[project]
+name = "navidrome-fm"
+version = "0.1.0"
+description = "Sync last.fm play counts to navidrome"
+requires-python = ">=3.12"
+dependencies = [
+    "python-dotenv>=1.2.1",
+    "requests>=2.32.5",
+    "termcolor>=3.3.0",
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project.scripts]
+navidrome-fm = "navidrome_fm:main_cli"

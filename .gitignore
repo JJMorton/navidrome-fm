@@ -1,0 +1,8 @@
+.python-version
+.env
+__pycache__/
+.venv/
+.DS_Store
+pyrightconfig.json
+*.db
+*.egg-info/
