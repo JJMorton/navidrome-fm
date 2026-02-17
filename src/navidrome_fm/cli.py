@@ -27,11 +27,12 @@ def command_info(args: argparse.Namespace, log: Log) -> int:
         return 1
 
     with sqlite3.Connection(Path(f"scrobbles_{args.user}.db")) as con:
-        db = ScrobbleDB(con, log)
+        scrobbles = ScrobbleDB(con, log)
+        m = NavidromeScrobbleMatcher(scrobbles, Path(args.database), log)
         user_info = api.get_info(api_key, user=args.user, log=log)
-        scrobble_count = db.count_scrobbles()
-        track_count = db.count_tracks()
-        match_count = db.count_matched()
+        scrobble_count = scrobbles.count_scrobbles()
+        track_count = scrobbles.count_tracks()
+        unmatched_count = sum(1 for _ in m.iter_unmatched())
         print(f"{'User':15s}\t{user_info.name}")
         print(
             f"{'Scrobbles':15s}\t{scrobble_count} (local) / {user_info.playcount} (last.fm)"
@@ -40,7 +41,7 @@ def command_info(args: argparse.Namespace, log: Log) -> int:
             f"{'Tracks':15s}\t{track_count} (local) / {user_info.track_count} (last.fm)"
         )
         print(
-            f"{'Matched':15s}\t{match_count} / {track_count} tracks ({100.0 * match_count / track_count:.0f}%)"
+            f"{unmatched_count} unmatched Navidrome tracks"
         )
 
     return 0
@@ -78,21 +79,30 @@ def command_get_scrobbles(args: argparse.Namespace, log: Log) -> int:
 
 def command_match(args: argparse.Namespace, log: Log) -> int:
     with sqlite3.Connection(Path(f"scrobbles_{args.user}.db")) as con_scrobbles:
-        with sqlite3.Connection(Path(args.database)) as con_navidrome:
-            m = NavidromeScrobbleMatcher(con_scrobbles, con_navidrome, log)
-            track_count = 0
-            for track in m.iter_unmatched():
-                track_count += 1
-                status, match = m.find_navidrome_id_for(track, interactive=args.resolve)
-                if status == MatchStatus.MATCH:
-                    log.good(argv[0], f"Found match for {track}")
-                if status != MatchStatus.CHOICE_REQUIRED:
+        m = NavidromeScrobbleMatcher(
+            ScrobbleDB(con_scrobbles, log), Path(args.database), log
+        )
+        track_count = 0
+        matched_count = 0
+        fail_count = 0
+        uncertain_count = 0
+        for track in m.iter_unmatched():
+            track_count += 1
+            log.info(argv[0], f"Searching for match for {track}")
+            status, matches = m.find_lastfm_tracks_for(track, interactive=args.resolve)
+            if status == MatchStatus.NO_MATCH:
+                fail_count += 1
+                log.bad(argv[0], f"No match found!")
+            elif status == MatchStatus.MATCH:
+                matched_count += 1
+                for match in matches:
+                    log.good(argv[0], f"Matched to track {match}")
                     m.save_match(track, match)
+            else:
+                uncertain_count += 1
+                log.info(argv[0], "Uncertain match, run with --resolve")
 
-    log.good(argv[0], f"Processed {track_count} unmatched tracks")
-
-    # for track in db.iter_tracks():
-    #     pc = db.play_count(track.id)
+    log.info(argv[0], f"PROCESSED {track_count} UNMATCHED TRACKS, {matched_count} MATCHED, {uncertain_count} REQUIRE CONFIRMATION, {fail_count} NOT MATCHED.")
 
     return 0
 
@@ -109,6 +119,9 @@ def main_cli() -> int:
 
     parser_info = subparsers.add_parser(
         "info", help="show statistics of saved scrobbles"
+    )
+    parser_info.add_argument(
+        "--database", type=str, required=True, help="path to the Navidrome database"
     )
     parser_info.set_defaults(func=command_info)
 
