@@ -268,6 +268,7 @@ class NavidromeScrobbleMatcher:
             return MatchStatus.MATCH, [LastFMTrackEntry(*m) for m in matches]
 
         # Now try fuzzy matching
+        # TODO: Move fuzzy matching to separate file
 
         def trim_feature(t: str) -> str:
             """Remove everything after either 'feat.' or 'ft.'"""
