@@ -104,7 +104,6 @@ class Model(ABC):
 
         # Make sure APIResponse has all the keys needed to initialise the model
         if not all(k in res for k, req in zip(keys, required) if req):
-            print(f"Invalid API response, cannot cast to {cls.__name__}", file=stderr)
             return LastFMAPIError(
                 error=-1, message=f"Invalid API response, cannot cast to {cls.__name__}"
             )
@@ -347,7 +346,7 @@ class _RecentTracksContentModel(Model):
             tracks = []
             for v in value:
                 # Try constructing a scrobble, otherwise fall back to a track
-                # without a timestamp
+                # without a timestamp (is the case for a now playing track)
                 try:
                     tracks.append(ScrobbleModel.from_response(v))
                 except:
