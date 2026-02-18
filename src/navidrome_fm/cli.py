@@ -3,6 +3,7 @@ import sqlite3
 from os import environ
 from pathlib import Path
 from sys import argv
+from shutil import copy
 
 from dotenv import load_dotenv
 
@@ -118,6 +119,11 @@ def command_match(args: argparse.Namespace, log: Log) -> int:
 
 
 def command_counts(args: argparse.Namespace, log: Log) -> int:
+
+    fp = Path(args.database).resolve()
+    bak = fp.with_suffix(".db.bak")
+    copy(fp, bak)
+    log.info(argv[0], f"Backed up navidrome database to {bak.as_posix()}")
 
     with sqlite3.Connection(Path(f"scrobbles_{args.user}.db")) as con_scrobbles:
         m = NavidromeScrobbleMatcher(
