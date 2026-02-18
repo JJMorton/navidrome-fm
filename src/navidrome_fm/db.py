@@ -111,7 +111,7 @@ class ScrobbleDB:
             """
         )
 
-        self.log.good(self, "Initialised scrobble database")
+        self.log.info(self, "Initialised scrobble database")
 
     def add_scrobble_from_api(
         self,
@@ -281,7 +281,7 @@ class NavidromeScrobbleMatcher:
 
         changed = cur.fetchall()
         if len(changed) == 0:
-            self.log.info(self, "All tracks are up to date.")
+            self.log.good(self, "All tracks are up to date.")
             return
 
         if input(f"Updating {len(changed)} play counts, OK? [Y/N] ").lower() == "y":
@@ -413,11 +413,13 @@ class NavidromeScrobbleMatcher:
             if interactive:
                 print(f"Candidates for {track}:")
                 for i, (match, ratio) in enumerate(match_ratio_sort):
-                    print(f"[{i + 1:2}] ({ratio * 100:2.0f}%) {match}")
-                print("[ 0] Reject all")
-                choices = [
-                    int(v) for v in input(f"[0-{len(match_ratio_sort)}] > ").split(",")
-                ]
+                    print(f"    [{i + 1:2}] ({ratio * 100:2.0f}%) {match}")
+                print("    [ 0] Reject all")
+                print("    [  ] Skip")
+                inp = input(f"    [0-{len(match_ratio_sort)}] > ")
+                if inp == "":
+                    return MatchStatus.CHOICE_REQUIRED, []
+                choices = [int(v) for v in inp.split(",")]
                 if any(c > 0 for c in choices) and all(
                     c <= len(match_ratio_sort) for c in choices
                 ):

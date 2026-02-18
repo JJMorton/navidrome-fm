@@ -93,26 +93,26 @@ def command_match(args: argparse.Namespace, log: Log) -> int:
         matched_count = 0
         fail_count = 0
         uncertain_count = 0
+        log.info(argv[0], "Searching for matches...")
         for track in m.iter_unmatched():
             track_count += 1
-            log.info(argv[0], f"Searching for match for {track}")
             status, matches = m.match_lastfm_tracks_for(track, interactive=args.resolve)
             if status == MatchStatus.NO_MATCH:
                 fail_count += 1
-                log.bad(argv[0], "No match found!")
+                log.bad(argv[0], f"No match found for {track}")
             elif status == MatchStatus.MATCH:
                 matched_count += 1
                 for match in matches:
-                    log.good(argv[0], f"Matched to track {match}")
+                    log.good(argv[0], f"{track} matched to {match}")
                     m.save_match(track, match)
             else:
                 uncertain_count += 1
-                log.info(argv[0], "Uncertain match, run with --resolve")
+                log.info(argv[0], f"Uncertain match for {track}, run with --resolve")
 
     log.good(argv[0], "Matching complete!")
     log.info(argv[0], f"[→] Processed {track_count} unmatched tracks")
     log.info(argv[0], f"[✓] {matched_count} matched")
-    log.info(argv[0], f"[?] {uncertain_count} require confirmation")
+    log.info(argv[0], f"[?] {uncertain_count} require confirmation with --resolve")
     log.info(argv[0], f"[x] {fail_count} not matched")
 
     return 0
