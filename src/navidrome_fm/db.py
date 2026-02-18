@@ -359,7 +359,7 @@ class NavidromeScrobbleMatcher:
                 SequenceMatcher(None, a.lower(), b.lower()).ratio() for a, b in pairs
             )
 
-        def enough_overlap(t1: NavidromeTrackEntry, t2: LastFMTrackEntry) -> int:
+        def enough_overlap(t1: NavidromeTrackEntry, t2: LastFMTrackEntry) -> bool:
             pairs = [
                 (trim_feature(t1.title), trim_feature(t2.title)),
                 (trim_feature(t1.artist), trim_feature(t2.artist)),
@@ -367,7 +367,7 @@ class NavidromeScrobbleMatcher:
             ]
             return all(
                 SequenceMatcher(None, a.lower(), b.lower()).find_longest_match().size
-                > min(len(a), len(b), min_overlap)
+                >= min(len(a), len(b), min_overlap)
                 for a, b in pairs
             )
 
