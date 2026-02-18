@@ -54,7 +54,7 @@ def command_info(args: argparse.Namespace, log: Log) -> int:
     return 0
 
 
-def command_get_scrobbles(args: argparse.Namespace, log: Log) -> int:
+def command_fetch(args: argparse.Namespace, log: Log) -> int:
     api_key = get_api_key(log)
     if api_key is None:
         return 1
@@ -148,14 +148,14 @@ def main_cli() -> int:
     )
     parser_info.set_defaults(func=command_info)
 
-    parser_get = subparsers.add_parser(
-        "get-scrobbles", help="fetch and save scrobbles from last.fm"
+    parser_fetch = subparsers.add_parser(
+        "fetch", help="fetch and save scrobbles from last.fm"
     )
-    parser_get.set_defaults(func=command_get_scrobbles)
-    parser_get.add_argument(
+    parser_fetch.set_defaults(func=command_fetch)
+    parser_fetch.add_argument(
         "-p", "--page", type=int, default=1, help="start from this page of results"
     )
-    parser_get.add_argument(
+    parser_fetch.add_argument(
         "-g",
         "--greedy",
         action="store_true",
@@ -164,7 +164,7 @@ def main_cli() -> int:
     )
 
     parser_match = subparsers.add_parser(
-        "match-scrobbles", help="match scrobbles with tracks in Navidrome"
+        "match", help="match scrobbles with tracks in Navidrome"
     )
     parser_match.set_defaults(func=command_match)
     parser_match.add_argument(

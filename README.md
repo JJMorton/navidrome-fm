@@ -4,13 +4,13 @@ Sync play counts from last.fm to a Navidrome database.
 ---
 
 ```
-usage: navidrome-fm [-h] -u USER {info,get-scrobbles,match-scrobbles,update-counts} ...
+usage: navidrome-fm [-h] -u USER {info,fetch,match,update-counts} ...
 
 positional arguments:
-  {info,get-scrobbles,match-scrobbles,update-counts}
+  {info,fetch,match,update-counts}
     info                show statistics of saved scrobbles
-    get-scrobbles       fetch and save scrobbles from last.fm
-    match-scrobbles     match scrobbles with tracks in Navidrome
+    fetch               fetch and save scrobbles from last.fm
+    match               match scrobbles with tracks in Navidrome
     update-counts       update Navidrome play counts with last.fm scrobbles
 
 options:
@@ -22,17 +22,17 @@ options:
 
 Fetch all new scrobbles from last.fm:
 ```
- $ navidrome-fm -u USER get-scrobbles
+ $ navidrome-fm -u USER fetch
 ```
 
 Match scrobbled tracks with those in a Navidrome database:
 ```
- $ navidrome-fm -u USER match-scrobbles --database navidrome.db
+ $ navidrome-fm -u USER match --database navidrome.db
 ```
 
 Manually resolve remaining fuzzy matches below a threshold:
 ```
- $ navidrome-fm -u USER match-scrobbles --database navidrome.db --resolve
+ $ navidrome-fm -u USER match --database navidrome.db --resolve
 ```
 
 Update the play counts in the Navidrome database:
