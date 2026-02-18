@@ -7,7 +7,7 @@ from sys import argv
 from dotenv import load_dotenv
 
 from . import api
-from .db import NavidromeScrobbleMatcher, MatchStatus, ScrobbleDB
+from .db import MatchStatus, NavidromeScrobbleMatcher, ScrobbleDB
 from .log import ConsoleLog, Log
 
 
@@ -40,9 +40,7 @@ def command_info(args: argparse.Namespace, log: Log) -> int:
         print(
             f"{'Tracks':15s}\t{track_count} (local) / {user_info.track_count} (last.fm)"
         )
-        print(
-            f"{unmatched_count} unmatched Navidrome tracks"
-        )
+        print(f"{unmatched_count} Navidrome tracks with no scrobbles recorded")
 
     return 0
 
@@ -89,10 +87,10 @@ def command_match(args: argparse.Namespace, log: Log) -> int:
         for track in m.iter_unmatched():
             track_count += 1
             log.info(argv[0], f"Searching for match for {track}")
-            status, matches = m.find_lastfm_tracks_for(track, interactive=args.resolve)
+            status, matches = m.match_lastfm_tracks_for(track, interactive=args.resolve)
             if status == MatchStatus.NO_MATCH:
                 fail_count += 1
-                log.bad(argv[0], f"No match found!")
+                log.bad(argv[0], "No match found!")
             elif status == MatchStatus.MATCH:
                 matched_count += 1
                 for match in matches:
@@ -102,13 +100,24 @@ def command_match(args: argparse.Namespace, log: Log) -> int:
                 uncertain_count += 1
                 log.info(argv[0], "Uncertain match, run with --resolve")
 
-    log.info(argv[0], f"PROCESSED {track_count} UNMATCHED TRACKS, {matched_count} MATCHED, {uncertain_count} REQUIRE CONFIRMATION, {fail_count} NOT MATCHED.")
+    log.good(argv[0], "Matching complete!")
+    log.info(argv[0], f"[→] Processed {track_count} unmatched tracks")
+    log.info(argv[0], f"[✓] {matched_count} matched")
+    log.info(argv[0], f"[?] {uncertain_count} require confirmation")
+    log.info(argv[0], f"[x] {fail_count} not matched")
 
     return 0
 
 
 def command_counts(args: argparse.Namespace, log: Log) -> int:
-    raise NotImplementedError()
+
+    with sqlite3.Connection(Path(f"scrobbles_{args.user}.db")) as con_scrobbles:
+        m = NavidromeScrobbleMatcher(
+            ScrobbleDB(con_scrobbles, log), Path(args.database), log
+        )
+        m.update_playcounts()
+
+    return 0
 
 
 def main_cli() -> int:
@@ -156,6 +165,9 @@ def main_cli() -> int:
 
     parser_counts = subparsers.add_parser(
         "update-counts", help="update Navidrome play counts with last.fm scrobbles"
+    )
+    parser_counts.add_argument(
+        "--database", type=str, required=True, help="path to the Navidrome database"
     )
     parser_counts.set_defaults(func=command_counts)
 

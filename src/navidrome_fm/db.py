@@ -184,14 +184,6 @@ class MatchStatus(Enum):
 
 @dataclass(frozen=True)
 class NavidromeScrobbleMatcher:
-    # Navidrome DB:
-    #
-    # table `media_file`
-    #  - `mbz_recording_id` matches `track.mbid` from last.fm API
-    #
-    # table `annotation`
-    #  - `item_type` (media_file, artist, album)
-    #  - `play_count`
 
     scrobbles: ScrobbleDB
     navidrome_db: Path
@@ -199,6 +191,7 @@ class NavidromeScrobbleMatcher:
 
     @cached_property
     def _db(self) -> sqlite3.Connection:
+        assert sqlite3.SQLITE_ATTACH
         cur = self.scrobbles.con.cursor()
         # FIXME: Don't want to accidentally attach twice! Check that we haven't already.
         cur.execute("ATTACH ? AS db_navidrome", (self.navidrome_db.as_posix(),))
@@ -226,7 +219,10 @@ class NavidromeScrobbleMatcher:
 
     def is_blacklisted(self, t1: NavidromeTrackEntry, t2: LastFMTrackEntry) -> bool:
         cur = self.scrobbles.con.cursor()
-        cur.execute("SELECT trackid FROM blacklist WHERE trackid=? AND navidromeid=?", (t2.id, t1.id))
+        cur.execute(
+            "SELECT trackid FROM blacklist WHERE trackid=? AND navidromeid=?",
+            (t2.id, t1.id),
+        )
         return len(cur.fetchall()) > 0
 
     def iter_unmatched(self) -> Iterator[NavidromeTrackEntry]:
@@ -240,7 +236,41 @@ class NavidromeScrobbleMatcher:
         ):
             yield NavidromeTrackEntry(id, title, artist, album, mbz_recording_id)
 
-    def find_lastfm_tracks_for(
+    def update_playcounts(self):
+        cur = self._db.cursor()
+
+        cur.execute("begin")
+
+        cur.execute(
+            """
+            UPDATE db_navidrome.annotation
+            SET play_count = MAX(db_navidrome.annotation.play_count, counted.play_count)
+            FROM (
+                SELECT match.navidromeid AS id, COUNT(*) as play_count
+                FROM scrobble
+                JOIN match ON scrobble.trackid = match.trackid
+                JOIN db_navidrome.media_file ON match.navidromeid = db_navidrome.media_file.id
+                GROUP BY match.navidromeid
+            ) AS counted
+            WHERE counted.id = db_navidrome.annotation.item_id AND db_navidrome.annotation.play_count < counted.play_count
+            RETURNING item_id, play_count
+            """
+        )
+
+        changed = cur.fetchall()
+        if len(changed) == 0:
+            self.log.info(self, "All tracks are up to date.")
+            return
+
+        if input(f"Updating {len(changed)} play counts, OK? [Y/N] ").lower() == "y":
+            cur.execute("commit")
+            self.log.good(self, "Successfully updated!")
+        else:
+            cur.execute("rollback")
+            self.log.info(self, "Aborted changes")
+
+
+    def match_lastfm_tracks_for(
         self,
         track: NavidromeTrackEntry,
         interactive: bool,
@@ -254,7 +284,8 @@ class NavidromeScrobbleMatcher:
 
         # First try MusicBrainz ID, always correct
         matches = cur.execute(
-            "SELECT id, title, artist, album, mbid FROM track WHERE mbid=?", (track.mbz_recording_id,)
+            "SELECT id, title, artist, album, mbid FROM track WHERE mbid=?",
+            (track.mbz_recording_id,),
         ).fetchall()
         if len(matches) > 0:
             return MatchStatus.MATCH, [LastFMTrackEntry(*m) for m in matches]
@@ -276,11 +307,17 @@ class NavidromeScrobbleMatcher:
             res = re.sub(r"^(.*)ft\. .*$", lambda m: m.group(1), res)
             return res
 
-        def matcher_for(t1: NavidromeTrackEntry, t2: LastFMTrackEntry) -> SequenceMatcher:
+        def matcher_for(
+            t1: NavidromeTrackEntry, t2: LastFMTrackEntry
+        ) -> SequenceMatcher:
             return SequenceMatcher(
                 None,
-                (trim_feature(t1.title) + trim_feature(t1.artist) + (t1.album or "")).lower(),
-                (trim_feature(t2.title) + trim_feature(t2.artist) + (t2.album or "")).lower(),
+                (
+                    trim_feature(t1.title) + trim_feature(t1.artist) + (t1.album or "")
+                ).lower(),
+                (
+                    trim_feature(t2.title) + trim_feature(t2.artist) + (t2.album or "")
+                ).lower(),
             )
 
         def min_match_ratio(t1: NavidromeTrackEntry, t2: LastFMTrackEntry) -> float:
@@ -290,10 +327,7 @@ class NavidromeScrobbleMatcher:
                 (t1.album or "", t2.album or ""),
             ]
             return min(
-                SequenceMatcher(
-                    None, a.lower(), b.lower()
-                ).ratio()
-                for a, b in pairs
+                SequenceMatcher(None, a.lower(), b.lower()).ratio() for a, b in pairs
             )
 
         def enough_overlap(t1: NavidromeTrackEntry, t2: LastFMTrackEntry) -> int:
@@ -303,9 +337,8 @@ class NavidromeScrobbleMatcher:
                 (t1.album or "", t2.album or ""),
             ]
             return all(
-                SequenceMatcher(
-                    None, a.lower(), b.lower()
-                ).find_longest_match().size > min(len(a), len(b), min_overlap)
+                SequenceMatcher(None, a.lower(), b.lower()).find_longest_match().size
+                > min(len(a), len(b), min_overlap)
                 for a, b in pairs
             )
 
@@ -336,7 +369,11 @@ class NavidromeScrobbleMatcher:
 
         if match_ratio_sort:
             # Accept if above `accept_ratio`
-            acceptable = [(match, ratio) for match, ratio in match_ratio_sort if ratio > min_ratio_all]
+            acceptable = [
+                (match, ratio)
+                for match, ratio in match_ratio_sort
+                if ratio > min_ratio_all
+            ]
             if acceptable:
                 return MatchStatus.MATCH, [t for t, _ in acceptable]
 
@@ -346,9 +383,15 @@ class NavidromeScrobbleMatcher:
                 for i, (match, ratio) in enumerate(match_ratio_sort):
                     print(f"[{i + 1:2}] ({ratio * 100:2.0f}%) {match}")
                 print("[ 0] Reject all")
-                choices = [int(v) for v in input(f"[0-{len(match_ratio_sort)}] > ").split(",")]
-                if any(c > 0 for c in choices) and all(c <= len(match_ratio_sort) for c in choices):
-                    return MatchStatus.MATCH, [match_ratio_sort[c - 1][0] for c in choices]
+                choices = [
+                    int(v) for v in input(f"[0-{len(match_ratio_sort)}] > ").split(",")
+                ]
+                if any(c > 0 for c in choices) and all(
+                    c <= len(match_ratio_sort) for c in choices
+                ):
+                    return MatchStatus.MATCH, [
+                        match_ratio_sort[c - 1][0] for c in choices
+                    ]
                 else:
                     for match, _ in match_ratio_sort:
                         self.blacklist_match(track, match)
