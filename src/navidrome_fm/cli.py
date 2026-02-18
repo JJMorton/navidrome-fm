@@ -11,6 +11,14 @@ from .db import MatchStatus, NavidromeScrobbleMatcher, ScrobbleDB
 from .log import ConsoleLog, Log
 
 
+# TODO: Listening time statistics. Have scrobbles and track durations so can
+#       compute e.g. time this year, time in mornings, etc.
+# TODO: Genre statistics. Genre seems to be in three places in the DB:
+#       - `media_file.genre`, blank for me
+#       - `media_file.tags`, contained in JSON
+#       - The `tag` table, seems to be easiest
+
+
 def get_api_key(log: Log) -> str | None:
     # Get API key from .env file
     load_dotenv()

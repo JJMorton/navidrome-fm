@@ -255,6 +255,10 @@ class NavidromeScrobbleMatcher:
             yield NavidromeTrackEntry(id, title, artist, album, mbz_recording_id)
 
     def update_playcounts(self):
+
+        # TODO: Album and artist play counts are also stored in the `annotation` table, update these too?
+        # TODO: Also update `play_date`. Implementing won't require any database changes, just use the latest scrobble's timestamp.
+
         cur = self._db.cursor()
 
         cur.execute("begin")
@@ -324,6 +328,7 @@ class NavidromeScrobbleMatcher:
 
         # Now try fuzzy matching
         # TODO: Move fuzzy matching to separate file
+        # TODO: Make a small TUI for the manual match checking? Type numbers to check/uncheck corresponding matches.
 
         def trim_feature(t: str) -> str:
             """Remove everything after either 'feat.' or 'ft.'"""
