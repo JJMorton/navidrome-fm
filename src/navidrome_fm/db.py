@@ -63,44 +63,52 @@ class ScrobbleDB:
         # Tracks are uniquely defined by their unique hash, affected by all the
         # other columns as defined by TrackModel.track_id
         cur.execute(
-            "CREATE TABLE IF NOT EXISTS track ("
-            "id TEXT PRIMARY KEY,"
-            "title TEXT NOT NULL,"
-            "artist TEXT NOT NULL,"
-            "album TEXT,"
-            "mbid TEXT"
-            ")"
+            """
+            CREATE TABLE IF NOT EXISTS track (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                artist TEXT NOT NULL,
+                album TEXT,
+                mbid TEXT
+            )
+            """
         )
 
         # Scrobbles are uniquely identified by the combination of a track and
         # a timestamp.
         cur.execute(
-            "CREATE TABLE IF NOT EXISTS scrobble ("
-            "timestamp INTEGER NOT NULL,"
-            "trackid TEXT NOT NULL,"
-            "FOREIGN KEY(trackid) REFERENCES track(id),"
-            "PRIMARY KEY(trackid, timestamp)"
-            ")"
+            """
+            CREATE TABLE IF NOT EXISTS scrobble (
+                timestamp INTEGER NOT NULL,
+                trackid TEXT NOT NULL,
+                FOREIGN KEY(trackid) REFERENCES track(id),
+                PRIMARY KEY(trackid, timestamp)
+            )
+            """
         )
 
-        # Link each track to a navidrome ID
+        # Link each track to a navidrome ID if possible
         cur.execute(
-            "CREATE TABLE IF NOT EXISTS match ("
-            "trackid TEXT NOT NULL,"
-            "navidromeid TEXT NOT NULL,"
-            "FOREIGN KEY(trackid) REFERENCES track(id),"
-            "PRIMARY KEY(trackid, navidromeid)"
-            ")"
+            """
+            CREATE TABLE IF NOT EXISTS match (
+                trackid TEXT NOT NULL,
+                navidromeid TEXT NOT NULL,
+                FOREIGN KEY(trackid) REFERENCES track(id),
+                PRIMARY KEY(trackid, navidromeid)
+            )
+            """
         )
 
-        # List of blacklisted matches
+        # List of blacklisted matches, which the user explicitly said are not correct
         cur.execute(
-            "CREATE TABLE IF NOT EXISTS blacklist ("
-            "trackid TEXT NOT NULL,"
-            "navidromeid TEXT NOT NULL,"
-            "FOREIGN KEY(trackid) REFERENCES track(id),"
-            "PRIMARY KEY(trackid, navidromeid)"
-            ")"
+            """
+            CREATE TABLE IF NOT EXISTS blacklist (
+                trackid TEXT NOT NULL,
+                navidromeid TEXT NOT NULL,
+                FOREIGN KEY(trackid) REFERENCES track(id),
+                PRIMARY KEY(trackid, navidromeid)
+            )
+            """
         )
 
         self.log.good(self, "Initialised scrobble database")
@@ -118,7 +126,11 @@ class ScrobbleDB:
 
         # Add the track if it doesn't exist
         cur.execute(
-            "INSERT OR IGNORE INTO track(id, title, artist, album, mbid) VALUES(?, ?, ?, ?, ?) RETURNING id",
+            """
+            INSERT OR IGNORE INTO track(id, title, artist, album, mbid)
+            VALUES(?, ?, ?, ?, ?)
+            RETURNING id
+            """,
             (s.track_id, s.name, s.artist.name, s.album.name or None, s.mbid or None),
         )
         if len(cur.fetchall()) > 0:
@@ -126,7 +138,11 @@ class ScrobbleDB:
 
         # Only add the scrobble if it doesn't exist
         cur.execute(
-            "INSERT OR IGNORE INTO scrobble(timestamp, trackid) VALUES(?, ?) RETURNING trackid",
+            """
+            INSERT OR IGNORE INTO scrobble(timestamp, trackid)
+            VALUES(?, ?)
+            RETURNING trackid
+            """,
             (s.date.uts, s.track_id),
         )
         new = len(cur.fetchall()) > 0
@@ -135,16 +151,6 @@ class ScrobbleDB:
 
         self.con.commit()
         return new
-
-    def play_count(self, track_id: str) -> int:
-        """Play count for the given track ID"""
-        cur = self.con.cursor()
-        scrobbles = cur.execute(
-            "SELECT trackid FROM scrobble WHERE trackid=?", (track_id,)
-        ).fetchall()
-        if len(scrobbles) == 0:
-            self.log.bad(self, f"Track with id {track_id} not found in scrobbles")
-        return len(scrobbles)
 
     def iter_tracks(self) -> Iterator[LastFMTrackEntry]:
         """Iterate all saved tracks"""
@@ -184,7 +190,6 @@ class MatchStatus(Enum):
 
 @dataclass(frozen=True)
 class NavidromeScrobbleMatcher:
-
     scrobbles: ScrobbleDB
     navidrome_db: Path
     log: Log
@@ -200,7 +205,11 @@ class NavidromeScrobbleMatcher:
     def save_match(self, t1: NavidromeTrackEntry, t2: LastFMTrackEntry):
         cur = self.scrobbles.con.cursor()
         cur.execute(
-            "INSERT INTO match(trackid, navidromeid) VALUES(?, ?) RETURNING trackid",
+            """
+            INSERT INTO match(trackid, navidromeid)
+            VALUES(?, ?)
+            RETURNING trackid
+            """,
             (t2.id, t1.id),
         )
         if not cur.fetchall():
@@ -210,7 +219,11 @@ class NavidromeScrobbleMatcher:
     def blacklist_match(self, t1: NavidromeTrackEntry, t2: LastFMTrackEntry):
         cur = self.scrobbles.con.cursor()
         cur.execute(
-            "INSERT INTO blacklist(trackid, navidromeid) VALUES(?, ?) RETURNING trackid",
+            """
+            INSERT INTO blacklist(trackid, navidromeid)
+            VALUES(?, ?)
+            RETURNING trackid
+            """,
             (t2.id, t1.id),
         )
         if not cur.fetchall():
@@ -220,7 +233,10 @@ class NavidromeScrobbleMatcher:
     def is_blacklisted(self, t1: NavidromeTrackEntry, t2: LastFMTrackEntry) -> bool:
         cur = self.scrobbles.con.cursor()
         cur.execute(
-            "SELECT trackid FROM blacklist WHERE trackid=? AND navidromeid=?",
+            """
+            SELECT trackid FROM blacklist
+            WHERE trackid=? AND navidromeid=?
+            """,
             (t2.id, t1.id),
         )
         return len(cur.fetchall()) > 0
@@ -229,10 +245,12 @@ class NavidromeScrobbleMatcher:
         cur = self._db.cursor()
         # Find all navidrome tracks that aren't matched to any last.fm tracks
         for id, title, artist, album, mbz_recording_id in cur.execute(
-            "SELECT id, title, artist, album, mbz_recording_id"
-            " FROM db_navidrome.media_file t1"
-            " LEFT JOIN match t2 ON t2.navidromeid = t1.id"
-            " WHERE t2.trackid IS NULL"
+            """
+            SELECT id, title, artist, album, mbz_recording_id
+            FROM db_navidrome.media_file t1
+            LEFT JOIN match t2 ON t2.navidromeid = t1.id
+            WHERE t2.trackid IS NULL
+            """
         ):
             yield NavidromeTrackEntry(id, title, artist, album, mbz_recording_id)
 
@@ -269,7 +287,6 @@ class NavidromeScrobbleMatcher:
             cur.execute("rollback")
             self.log.info(self, "Aborted changes")
 
-
     def match_lastfm_tracks_for(
         self,
         track: NavidromeTrackEntry,
@@ -284,7 +301,10 @@ class NavidromeScrobbleMatcher:
 
         # First try MusicBrainz ID, always correct
         matches = cur.execute(
-            "SELECT id, title, artist, album, mbid FROM track WHERE mbid=?",
+            """
+            SELECT id, title, artist, album, mbid FROM track
+            WHERE mbid=?
+            """,
             (track.mbz_recording_id,),
         ).fetchall()
         if len(matches) > 0:
@@ -292,7 +312,11 @@ class NavidromeScrobbleMatcher:
 
         # Next try exact artist, album, and title match
         matches = cur.execute(
-            "SELECT id, title, artist, album, mbid FROM track WHERE title=? AND artist=? AND album=? COLLATE NOCASE",
+            """
+            SELECT id, title, artist, album, mbid FROM track
+            WHERE title=? AND artist=? AND album=?
+            COLLATE NOCASE
+            """,
             (track.title, track.artist, track.album),
         ).fetchall()
         if len(matches) > 0:
@@ -346,7 +370,10 @@ class NavidromeScrobbleMatcher:
         matches = [
             LastFMTrackEntry(id, title, artist, album or None, mbid=None)
             for id, title, artist, album in cur.execute(
-                "SELECT id, title, artist, album FROM track WHERE title=? OR artist=? OR album=?",
+                """
+                SELECT id, title, artist, album FROM track
+                WHERE title=? OR artist=? OR album=?
+                """,
                 (track.title, track.artist, track.album),
             ).fetchall()
         ]
