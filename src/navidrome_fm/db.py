@@ -295,8 +295,9 @@ class NavidromeScrobbleMatcher:
         self,
         track: NavidromeTrackEntry,
         interactive: bool,
+        fuzzy: bool,
         min_ratio_all: float = 0.9,
-        min_ratio_each: float = 0.3,
+        min_ratio_each: float = 0.7,
         min_overlap: float = 5,
     ) -> tuple[MatchStatus, list[LastFMTrackEntry]]:
         """Find all the last.fm tracks which match the given navidrome track. Returns their IDs."""
@@ -325,6 +326,9 @@ class NavidromeScrobbleMatcher:
         ).fetchall()
         if len(matches) > 0:
             return MatchStatus.MATCH, [LastFMTrackEntry(*m) for m in matches]
+
+        if not fuzzy:
+            return MatchStatus.NO_MATCH, []
 
         # Now try fuzzy matching
         # TODO: Move fuzzy matching to separate file

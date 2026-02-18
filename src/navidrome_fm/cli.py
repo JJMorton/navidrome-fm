@@ -96,7 +96,7 @@ def command_match(args: argparse.Namespace, log: Log) -> int:
         log.info(argv[0], "Searching for matches...")
         for track in m.iter_unmatched():
             track_count += 1
-            status, matches = m.match_lastfm_tracks_for(track, interactive=args.resolve)
+            status, matches = m.match_lastfm_tracks_for(track, fuzzy=args.fuzzy, interactive=args.resolve)
             if status == MatchStatus.NO_MATCH:
                 fail_count += 1
                 log.bad(argv[0], f"No match found for {track}")
@@ -171,10 +171,16 @@ def main_cli() -> int:
         "--database", type=str, required=True, help="path to the Navidrome database"
     )
     parser_match.add_argument(
+        "--fuzzy",
+        action="store_true",
+        default=False,
+        help="use fuzzy matching",
+    )
+    parser_match.add_argument(
         "--resolve",
         action="store_true",
         default=False,
-        help="manually resolve uncertain matches",
+        help="manually resolve uncertain fuzzy matches",
     )
 
     parser_counts = subparsers.add_parser(
