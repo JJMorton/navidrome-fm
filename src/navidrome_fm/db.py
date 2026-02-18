@@ -257,7 +257,6 @@ class NavidromeScrobbleMatcher:
     def update_playcounts(self):
 
         # TODO: Album and artist play counts are also stored in the `annotation` table, update these too?
-        # TODO: Also update `play_date`. Implementing won't require any database changes, just use the latest scrobble's timestamp.
 
         cur = self._db.cursor()
 
@@ -266,16 +265,20 @@ class NavidromeScrobbleMatcher:
         cur.execute(
             """
             UPDATE db_navidrome.annotation
-            SET play_count = MAX(db_navidrome.annotation.play_count, counted.play_count)
+            SET play_count = MAX(db_navidrome.annotation.play_count, counted.play_count),
+                play_date  = datetime(MAX(unixepoch(db_navidrome.annotation.play_date), counted.timestamp), 'unixepoch')
             FROM (
-                SELECT match.navidromeid AS id, COUNT(*) as play_count
+                SELECT match.navidromeid AS id, MAX(scrobble.timestamp) AS timestamp, COUNT(*) as play_count
                 FROM scrobble
                 JOIN match ON scrobble.trackid = match.trackid
                 JOIN db_navidrome.media_file ON match.navidromeid = db_navidrome.media_file.id
                 GROUP BY match.navidromeid
             ) AS counted
-            WHERE counted.id = db_navidrome.annotation.item_id AND db_navidrome.annotation.play_count < counted.play_count
-            RETURNING item_id, play_count
+            WHERE counted.id = db_navidrome.annotation.item_id AND (
+                db_navidrome.annotation.play_count < counted.play_count
+                OR unixepoch(db_navidrome.annotation.play_date) < counted.timestamp
+            )
+            RETURNING item_id, play_count, play_date
             """
         )
 
@@ -284,7 +287,13 @@ class NavidromeScrobbleMatcher:
             self.log.good(self, "All tracks are up to date.")
             return
 
-        if input(f"Updating {len(changed)} play counts, OK? [Y/N] ").lower() == "y":
+        # FIXME: Upsert into `db_navidrome.annotation`. Tracks that haven't been played before are not present so aren't affected by an UPDATE.
+        # with open("changes.csv", "w") as f:
+        #     print("id,play_count,play_date", file=f)
+        #     for c in changed:
+        #         print(f"{c[0]},{c[1]},{c[2]}", file=f)
+
+        if input(f"Updating play counts and dates for {len(changed)} tracks, OK? [Y/N] ").lower() == "y":
             cur.execute("commit")
             self.log.good(self, "Successfully updated!")
         else:
