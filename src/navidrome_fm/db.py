@@ -306,7 +306,8 @@ class NavidromeScrobbleMatcher:
             ) AS counted
             WHERE true
             ON CONFLICT(user_id, item_id, item_type) DO UPDATE
-            SET play_count = excluded.play_count, play_date = excluded.play_date
+            SET play_count = MAX(excluded.play_count, db_navidrome.annotation.play_count),
+                play_date = datetime(MAX(unixepoch(excluded.play_date), unixepoch(db_navidrome.annotation.play_date)), 'unixepoch')
             WHERE db_navidrome.annotation.play_count < excluded.play_count
             OR unixepoch(db_navidrome.annotation.play_date) < unixepoch(excluded.play_date)
             RETURNING item_id, play_count, play_date
