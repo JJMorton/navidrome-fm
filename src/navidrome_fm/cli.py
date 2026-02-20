@@ -146,6 +146,10 @@ def command_counts(args: argparse.Namespace, log: Log) -> int:
     return 0
 
 
+def command_scrobbles(args: argparse.Namespace, log: Log) -> int:
+    raise NotImplementedError()
+
+
 def main_cli() -> int:
 
     parser = argparse.ArgumentParser()
@@ -203,6 +207,14 @@ def main_cli() -> int:
         "--database", type=str, required=True, help="path to the Navidrome database"
     )
     parser_counts.set_defaults(func=command_counts)
+
+    parser_scrobbles = subparsers.add_parser(
+        "update-scrobbles", help="add all last.fm scrobbles to Navidrome's native scrobbles"
+    )
+    parser_scrobbles.add_argument(
+        "--database", type=str, required=True, help="path to the Navidrome database"
+    )
+    parser_scrobbles.set_defaults(func=command_scrobbles)
 
     args = parser.parse_args()
 
