@@ -96,7 +96,9 @@ def command_match(args: argparse.Namespace, log: Log) -> int:
         log.info(argv[0], "Searching for matches...")
         for track in m.iter_unmatched():
             track_count += 1
-            status, matches = m.match_lastfm_tracks_for(track, fuzzy=args.fuzzy, interactive=args.resolve)
+            status, matches = m.match_lastfm_tracks_for(
+                track, fuzzy=args.fuzzy, interactive=args.resolve
+            )
             if status == MatchStatus.NO_MATCH:
                 fail_count += 1
                 log.bad(argv[0], f"No match found for {track}")
@@ -129,7 +131,17 @@ def command_counts(args: argparse.Namespace, log: Log) -> int:
         m = NavidromeScrobbleMatcher(
             ScrobbleDB(con_scrobbles, log), Path(args.database), log
         )
-        m.update_playcounts()
+
+        user = m.get_user_or_only(args.navidrome_user)
+        if user is None:
+            log.bad(
+                argv[0],
+                "Specify a Navidrome username with --navidrome-user, and ensure there is at least one user in Navidrome",
+            )
+            return 1
+        log.info(argv[0], f"Using Navidrome user {user.user_name}")
+
+        m.update_playcounts(user.id)
 
     return 0
 
@@ -138,6 +150,7 @@ def main_cli() -> int:
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-u", "--user", required=True, help="last.fm username")
+    parser.add_argument("--navidrome-user", required=False, help="Navidrome username, required if multiple available")
     subparsers = parser.add_subparsers()
 
     parser_info = subparsers.add_parser(

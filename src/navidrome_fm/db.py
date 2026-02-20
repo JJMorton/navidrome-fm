@@ -189,18 +189,45 @@ class MatchStatus(Enum):
 
 
 @dataclass(frozen=True)
+class NavidromeUser:
+    id: str
+    user_name: str
+
+
+@dataclass(frozen=True)
 class NavidromeScrobbleMatcher:
     scrobbles: ScrobbleDB
     navidrome_db: Path
     log: Log
 
     @cached_property
-    def _db(self) -> sqlite3.Connection:
+    def _con(self) -> sqlite3.Connection:
         assert sqlite3.SQLITE_ATTACH
         cur = self.scrobbles.con.cursor()
         # FIXME: Don't want to accidentally attach twice! Check that we haven't already.
         cur.execute("ATTACH ? AS db_navidrome", (self.navidrome_db.as_posix(),))
         return self.scrobbles.con
+
+    def get_user_or_only(self, user_id: str | None) -> NavidromeUser | None:
+        """
+        Get the Navidrome user with `user_id`, or if there's only one user,
+        return that one.
+        """
+        cur = self._con.cursor()
+        cur.execute("SELECT id, user_name FROM user")
+        users = [NavidromeUser(*u) for u in cur.fetchall()]
+        if user_id is not None:
+            users = [u for u in users if u.user_name == user_id]
+
+        if len(users) > 1:
+            self.log.bad(self, f"Multiple navidrome users found, I don't know which to use")
+            return None
+
+        if len(users) == 0:
+            self.log.bad(self, f"No users found in the Navidrome database")
+            return None
+
+        return users[0]
 
     def save_match(self, t1: NavidromeTrackEntry, t2: LastFMTrackEntry):
         cur = self.scrobbles.con.cursor()
@@ -242,7 +269,7 @@ class NavidromeScrobbleMatcher:
         return len(cur.fetchall()) > 0
 
     def iter_unmatched(self) -> Iterator[NavidromeTrackEntry]:
-        cur = self._db.cursor()
+        cur = self._con.cursor()
         # Find all navidrome tracks that aren't matched to any last.fm tracks
         for id, title, artist, album, mbz_recording_id in cur.execute(
             """
@@ -254,46 +281,51 @@ class NavidromeScrobbleMatcher:
         ):
             yield NavidromeTrackEntry(id, title, artist, album, mbz_recording_id)
 
-    def update_playcounts(self):
+    def update_playcounts(self, user_id: str):
 
         # TODO: Album and artist play counts are also stored in the `annotation` table, update these too?
 
-        cur = self._db.cursor()
+        cur = self._con.cursor()
 
         cur.execute("begin")
 
         cur.execute(
             """
-            UPDATE db_navidrome.annotation
-            SET play_count = MAX(db_navidrome.annotation.play_count, counted.play_count),
-                play_date  = datetime(MAX(unixepoch(db_navidrome.annotation.play_date), counted.timestamp), 'unixepoch')
+            INSERT INTO db_navidrome.annotation(user_id, item_id, item_type, play_count, play_date)
+            SELECT
+                ? AS user_id,
+                counted.id AS item_id,
+                "media_file" AS item_type,
+                counted.play_count AS play_count,
+                datetime(counted.timestamp, 'unixepoch') AS play_date
             FROM (
-                SELECT match.navidromeid AS id, MAX(scrobble.timestamp) AS timestamp, COUNT(*) as play_count
+                SELECT match.navidromeid AS id, MAX(scrobble.timestamp) AS timestamp, COUNT(*) AS play_count
                 FROM scrobble
                 JOIN match ON scrobble.trackid = match.trackid
-                JOIN db_navidrome.media_file ON match.navidromeid = db_navidrome.media_file.id
                 GROUP BY match.navidromeid
             ) AS counted
-            WHERE counted.id = db_navidrome.annotation.item_id AND (
-                db_navidrome.annotation.play_count < counted.play_count
-                OR unixepoch(db_navidrome.annotation.play_date) < counted.timestamp
-            )
+            WHERE true
+            ON CONFLICT(user_id, item_id, item_type) DO UPDATE
+            SET play_count = excluded.play_count, play_date = excluded.play_date
+            WHERE db_navidrome.annotation.play_count < excluded.play_count
+            OR unixepoch(db_navidrome.annotation.play_date) < unixepoch(excluded.play_date)
             RETURNING item_id, play_count, play_date
-            """
+            """,
+            (user_id,)
         )
+        changes = cur.fetchall()
 
-        changed = cur.fetchall()
-        if len(changed) == 0:
+        if len(changes) == 0:
             self.log.good(self, "All tracks are up to date.")
             return
 
-        # FIXME: Upsert into `db_navidrome.annotation`. Tracks that haven't been played before are not present so aren't affected by an UPDATE.
+        # # FIXME: remove this debugging code
         # with open("changes.csv", "w") as f:
         #     print("id,play_count,play_date", file=f)
-        #     for c in changed:
+        #     for c in changes:
         #         print(f"{c[0]},{c[1]},{c[2]}", file=f)
 
-        if input(f"Updating play counts and dates for {len(changed)} tracks, OK? [Y/N] ").lower() == "y":
+        if input(f"Updating play counts and dates for {len(changes)} tracks, OK? [Y/N] ").lower() == "y":
             cur.execute("commit")
             self.log.good(self, "Successfully updated!")
         else:
@@ -311,7 +343,7 @@ class NavidromeScrobbleMatcher:
     ) -> tuple[MatchStatus, list[LastFMTrackEntry]]:
         """Find all the last.fm tracks which match the given navidrome track. Returns their IDs."""
 
-        cur = self._db.cursor()
+        cur = self._con.cursor()
 
         # First try MusicBrainz ID, always correct
         matches = cur.execute(
