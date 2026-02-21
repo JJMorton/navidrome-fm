@@ -120,6 +120,27 @@ def command_match(args: argparse.Namespace, log: Log) -> int:
     return 0
 
 
+def command_forget_scrobbles(args: argparse.Namespace, log: Log) -> int:
+    with sqlite3.Connection(Path(f"scrobbles_{args.user}.db")) as con:
+        db = ScrobbleDB(con, log)
+        db.ask_and_forget_scrobbles()
+    return 0
+
+
+def command_forget_matches(args: argparse.Namespace, log: Log) -> int:
+    with sqlite3.Connection(Path(f"scrobbles_{args.user}.db")) as con:
+        db = ScrobbleDB(con, log)
+        db.ask_and_forget_matches()
+    return 0
+
+
+def command_forget_blacklists(args: argparse.Namespace, log: Log) -> int:
+    with sqlite3.Connection(Path(f"scrobbles_{args.user}.db")) as con:
+        db = ScrobbleDB(con, log)
+        db.ask_and_forget_blacklists()
+    return 0
+
+
 def command_counts(args: argparse.Namespace, log: Log) -> int:
 
     fp = Path(args.database).resolve()
@@ -215,6 +236,20 @@ def main_cli() -> int:
         "--database", type=str, required=True, help="path to the Navidrome database"
     )
     parser_scrobbles.set_defaults(func=command_scrobbles)
+
+    parsers_clear = subparsers.add_parser(
+        "forget", help="forget scrobbles, matches, etc."
+    ).add_subparsers()
+    parsers_clear.add_parser(
+        "scrobbles",
+        help="forget all last.fm scrobbles"
+    ).set_defaults(func=command_forget_scrobbles)
+    parsers_clear.add_parser(
+        "matches", help="forget all matches to navidrome tracks"
+    ).set_defaults(func=command_forget_matches)
+    parsers_clear.add_parser(
+        "blacklist", help="forget all blacklisted matches"
+    ).set_defaults(func=command_forget_blacklists)
 
     args = parser.parse_args()
 

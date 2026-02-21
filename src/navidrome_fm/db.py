@@ -152,6 +152,72 @@ class ScrobbleDB:
         self.con.commit()
         return new
 
+    def ask_and_forget_blacklists(self) -> bool:
+        """Remove blacklisted matches, return whether execution was successful"""
+
+        cur = self.con.cursor()
+        cur.execute("begin")
+        cur.execute("DELETE FROM blacklist RETURNING trackid")
+        blacklists = cur.fetchall()
+
+        if len(blacklists) == 0:
+            self.log.info(self, "No blacklists to delete.")
+            return True
+
+        if input(f"Removing {len(blacklists)} blacklisted matches, are you sure? [Y/N] ").lower() == "y":
+            cur.execute("commit")
+            self.log.good(self, "Successfully updated!")
+            return True
+
+        cur.execute("rollback")
+        self.log.info(self, "Aborted changes")
+        return False
+
+    def ask_and_forget_matches(self) -> bool:
+        """Remove all matches, return whether execution was successful"""
+
+        if not self.ask_and_forget_blacklists():
+            return False
+
+        cur = self.con.cursor()
+        cur.execute("begin")
+        cur.execute("DELETE FROM match RETURNING trackid")
+        matches = cur.fetchall()
+
+        if len(matches) == 0:
+            self.log.info(self, "No matches to delete.")
+            return True
+
+        if input(f"Removing {len(matches)} matches, are you sure? [Y/N] ").lower() == "y":
+            cur.execute("commit")
+            self.log.good(self, "Successfully updated!")
+            return True
+
+        cur.execute("rollback")
+        self.log.info(self, "Aborted changes")
+        return False
+
+    def ask_and_forget_scrobbles(self) -> bool:
+        """Remove all scrobbles, return whether execution was successful"""
+
+        cur = self.con.cursor()
+        cur.execute("begin")
+        cur.execute("DELETE FROM scrobble RETURNING trackid")
+        scrobbles = cur.fetchall()
+
+        if len(scrobbles) == 0:
+            self.log.info(self, "No scrobbles to delete.")
+            return True
+
+        if input(f"Removing {len(scrobbles)} scrobbles, are you sure? [Y/N] ").lower() == "y":
+            cur.execute("commit")
+            self.log.good(self, "Successfully updated!")
+            return True
+
+        cur.execute("rollback")
+        self.log.info(self, "Aborted changes")
+        return False
+
     def iter_tracks(self) -> Iterator[LastFMTrackEntry]:
         """Iterate all saved tracks"""
         cur = self.con.cursor()
