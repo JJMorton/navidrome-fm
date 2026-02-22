@@ -3,15 +3,17 @@
 ---
 
 ```
-usage: navidrome-fm [-h] -u USER [--navidrome-user NAVIDROME_USER] {info,fetch,match,update-counts,update-scrobbles} ...
+usage: navidrome-fm [-h] -u USER [--navidrome-user NAVIDROME_USER]
+                    {info,fetch,match,update-counts,update-scrobbles,forget} ...
 
 positional arguments:
-  {info,fetch,match,update-counts,update-scrobbles}
+  {info,fetch,match,update-counts,update-scrobbles,forget}
     info                show statistics of saved scrobbles
     fetch               fetch and save scrobbles from last.fm
     match               match scrobbles with tracks in Navidrome
     update-counts       update Navidrome play counts with last.fm scrobbles
     update-scrobbles    add all last.fm scrobbles to Navidrome's native scrobbles
+    forget              forget scrobbles, matches, etc.
 
 options:
   -h, --help            show this help message and exit
