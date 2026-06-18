@@ -112,10 +112,10 @@ def command_match(args: argparse.Namespace, log: Log) -> int:
                 log.info(argv[0], f"Uncertain match for {track}, run with --resolve")
 
     log.good(argv[0], "Matching complete!")
-    log.info(argv[0], f"[→] Processed {track_count} unmatched tracks")
-    log.info(argv[0], f"[✓] {matched_count} matched")
+    log.info(argv[0], f"[→] Processed {track_count} unmatched navidrome tracks")
+    log.info(argv[0], f"[✓] {matched_count} navidrome tracks matched to scrobbles")
     log.info(argv[0], f"[?] {uncertain_count} require confirmation with --resolve")
-    log.info(argv[0], f"[x] {fail_count} not matched")
+    log.info(argv[0], f"[x] {fail_count} navidrome tracks not matched to scrobbles")
 
     return 0
 
